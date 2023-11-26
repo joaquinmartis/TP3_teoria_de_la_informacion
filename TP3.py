@@ -1,3 +1,4 @@
+import os
 import argparse
 import heapq
 from collections import defaultdict
@@ -41,7 +42,7 @@ def descomprimir(bits_comprimidos, diccionario_codigos):
     return texto_descomprimido
 
 def calcular_tasa_compresion(longitud_original, longitud_comprimida):
-    return longitud_comprimida / longitud_original
+    return longitud_original/longitud_comprimida
 
 def calcular_entropia(frecuencias):
     total = sum(frecuencias.values())
@@ -115,14 +116,14 @@ elif args.c:
         if j > 0:
             byte = byte << (8 - j)
             f.write(byte.to_bytes(1, byteorder='big'))
-
-    tasa_compresion = calcular_tasa_compresion(len(texto_original) * 8, len(bits_comprimidos))
+    f.close()
+    tasa_compresion = calcular_tasa_compresion(os.path.getsize(args.archivo_original),os.path.getsize(args.archivo_comprimido) )
     entropia = calcular_entropia(frecuencias)
     longitud_media = calcular_longitud_media(frecuencias, diccionario_codigos)
     rendimiento = calcular_rendimiento(entropia, longitud_media)
     redundancia = 1 - rendimiento
 
-    print(f"Compresión exitosa. Tasa de Compresión: {tasa_compresion:.2%}, Rendimiento: {rendimiento:.2%}, Redundancia: {redundancia:.2%}")
+    print(f"Compresión exitosa. Tasa de Compresión: {tasa_compresion:.2}:1, Rendimiento: {rendimiento:.2%}, Redundancia: {redundancia:.2%}")
 
 elif args.d:
     frecuencias = {}
@@ -160,7 +161,7 @@ elif args.d:
             # Invierte la cadena codAux antes de agregarla a codificacion
             codificacion = codificacion + codAux[::-1]
             i = i + 1
-
+    f.close()
     arbol_huffman = construir_arbol_huffman(frecuencias)
     diccionario_codigos = construir_diccionario_codigos(arbol_huffman)
     # Descomprimir los bits comprimidos utilizando el diccionario de códigos
@@ -169,4 +170,10 @@ elif args.d:
     # Escribir el texto descomprimido en el archivo original
     with open(args.archivo_original, 'w') as f:
         f.write(texto_descomprimido)
-    print("Descompresión exitosa")
+    f.close()
+    tasa_compresion = calcular_tasa_compresion(os.path.getsize(args.archivo_original),os.path.getsize(args.archivo_comprimido) )
+    entropia = calcular_entropia(frecuencias)
+    longitud_media = calcular_longitud_media(frecuencias, diccionario_codigos)
+    rendimiento = calcular_rendimiento(entropia, longitud_media)
+    redundancia = 1 - rendimiento
+    print(f"Descompresión exitosa. Tasa de Compresión: {tasa_compresion:}:1, Rendimiento: {rendimiento:.2%}, Redundancia: {redundancia:.2%}")
