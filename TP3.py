@@ -25,27 +25,6 @@ def construir_arbol_huffman(frecuencias):
 def construir_diccionario_codigos(arbol_huffman):
     return {caracter: codigo for caracter, codigo in arbol_huffman}
 
-def guardar_diccionario_codigos(diccionario_codigos, archivo):
-    with open(archivo, 'wb') as f:
-        # Guardar la cantidad de elementos en el diccionario
-        f.write(len(diccionario_codigos).to_bytes(4, byteorder='big'))
-        for caracter, codigo in diccionario_codigos.items():
-            # Guardar caracter, longitud de código y código en el archivo
-            f.write(bytes([ord(caracter), len(codigo)]) + codigo.encode('utf-8'))
-
-def cargar_diccionario_codigos(archivo):
-    diccionario_codigos = {}
-    with open(archivo, 'rb') as f:
-        # Leer la cantidad de elementos en el diccionario
-        num_elementos = int.from_bytes(f.read(4), byteorder='big')
-        for _ in range(num_elementos):
-            # Leer caracter, longitud de código y código del archivo
-            caracter = chr(f.read(1)[0])
-            longitud_codigo = f.read(1)[0]
-            codigo = f.read(longitud_codigo).decode('utf-8')
-            diccionario_codigos[caracter] = codigo
-    return diccionario_codigos
-
 def comprimir(texto, diccionario_codigos):
     return ''.join(diccionario_codigos[caracter] for caracter in texto)
 
@@ -77,6 +56,7 @@ def calcular_rendimiento(entropia, longitud_media):
     return entropia / longitud_media
 
 parser = argparse.ArgumentParser(description="Programa de compresión y descompresión utilizando Huffman")
+parser.usage = "TP3.py original.txt archivo_comprimido.bin {-c|-d}"
 parser.add_argument('archivo_original', type=str, help="Nombre del archivo de texto original")
 parser.add_argument('archivo_comprimido', type=str, help="Nombre del archivo binario comprimido")
 parser.add_argument('-c', action='store_true', help="Realizar compresión")
@@ -84,46 +64,109 @@ parser.add_argument('-d', action='store_true', help="Realizar descompresión")
 
 args = parser.parse_args()
 
-if not (args.c or args.d):
+if (args.c and args.d):
+    print("Error: debe seleccionar uno de los dos flags")
+elif not (args.c or args.d):
     print("Error: Debes especificar una de las opciones -c o -d.")
-else:
-    if args.c:
-        with open(args.archivo_original, 'r') as f:
-            texto_original = f.read()
 
-        frecuencias = obtener_frecuencias(texto_original)
-        arbol_huffman = construir_arbol_huffman(frecuencias)
-        diccionario_codigos = construir_diccionario_codigos(arbol_huffman)
+elif args.c:
+    with open(args.archivo_original, 'r') as f:
+        texto_original = f.read()
 
-        bits_comprimidos = comprimir(texto_original, diccionario_codigos)
+    frecuencias = obtener_frecuencias(texto_original)
+    arbol_huffman = construir_arbol_huffman(frecuencias)
+    diccionario_codigos = construir_diccionario_codigos(arbol_huffman)
 
-        # Guardar el diccionario de códigos en el archivo binario
-        guardar_diccionario_codigos(diccionario_codigos, args.archivo_comprimido)
+    bits_comprimidos = comprimir(texto_original, diccionario_codigos)
+    import math
 
-        # Append los bits comprimidos al archivo binario
-        with open(args.archivo_comprimido, 'ab') as f:
-            f.write(int(bits_comprimidos, 2).to_bytes((len(bits_comprimidos) + 7) // 8, byteorder='big'))
+    with open(args.archivo_comprimido, 'wb') as f:
+        # Escribir la longitud del diccionario_codigos en 1 byte
+        f.write(len(diccionario_codigos).to_bytes(1, byteorder='big'))
+    
+        # Escribir la cantidad de bytes necesarios para representar los bits comprimidos
+        bytes_necesarios = math.ceil(len(bits_comprimidos) / 8)
+        f.write(bytes_necesarios.to_bytes(4, byteorder='big'))
+    
+        # Escribir el residuo de la división por 8 (cantidad de bits adicionales necesarios)
+        f.write( (len(bits_comprimidos) % 8).to_bytes(1, byteorder='big'))
 
-        tasa_compresion = calcular_tasa_compresion(len(texto_original) * 8, len(bits_comprimidos))
-        entropia = calcular_entropia(frecuencias)
-        longitud_media = calcular_longitud_media(frecuencias, diccionario_codigos)
-        rendimiento = calcular_rendimiento(entropia, longitud_media)
-        redundancia = 1 - rendimiento
+        # Escribir caracteres y frecuencias
+        for caracter, frecuencia in frecuencias.items():
+            f.write(ord(caracter).to_bytes(1, byteorder='big'))
+            f.write(frecuencia.to_bytes(2, byteorder='big'))  # Puedes ajustar el número de bytes según tus necesidades.
 
-        print(f"Compresión exitosa. Tasa de Compresión: {tasa_compresion:.2%}, Rendimiento: {rendimiento:.2%}, Redundancia: {redundancia:.2%}")
+        # Escribir bits comprimidos
+        i = 0
+        j = 0
+        byte = 0
+        while i < len(bits_comprimidos):
+            byte = (byte << 1)
+            if bits_comprimidos[i] == '1':
+                byte = byte | 1
+            i = i + 1
+            j = j + 1
+            if j == 8:
+                j = 0
+                f.write(byte.to_bytes(1, byteorder='big'))
+                byte = 0
 
-    elif args.d:
-        # Cargar el diccionario de códigos desde el archivo binario
-        diccionario_codigos = cargar_diccionario_codigos(args.archivo_comprimido)
+        # Escribir el último byte si es necesario
+        if j > 0:
+            byte = byte << (8 - j)
+            f.write(byte.to_bytes(1, byteorder='big'))
 
-        # Abrir el archivo comprimido en modo binario ('rb') para leer los bits comprimidos
-        with open(args.archivo_comprimido, 'rb') as f:
-            # Leer los bits comprimidos y convertirlos a una cadena binaria
-            bits_comprimidos = ''.join(format(byte, '08b') for byte in f.read())
+    tasa_compresion = calcular_tasa_compresion(len(texto_original) * 8, len(bits_comprimidos))
+    entropia = calcular_entropia(frecuencias)
+    longitud_media = calcular_longitud_media(frecuencias, diccionario_codigos)
+    rendimiento = calcular_rendimiento(entropia, longitud_media)
+    redundancia = 1 - rendimiento
 
-        # Descomprimir los bits comprimidos utilizando el diccionario de códigos
-        texto_descomprimido = descomprimir(bits_comprimidos, diccionario_codigos)
+    print(f"Compresión exitosa. Tasa de Compresión: {tasa_compresion:.2%}, Rendimiento: {rendimiento:.2%}, Redundancia: {redundancia:.2%}")
 
-        # Escribir el texto descomprimido en el archivo original
-        with open(args.archivo_original, 'w') as f:
-            f.write(texto_descomprimido)
+elif args.d:
+    frecuencias = {}
+    with open(args.archivo_comprimido, 'rb') as f:
+        
+        longitud_diccionario = int.from_bytes(f.read(1), byteorder='big')
+        
+        bytes_necesarios = int.from_bytes(f.read(4), byteorder='big')
+        
+        residuo_division = int.from_bytes(f.read(1), byteorder='big')
+        
+        for _ in range(longitud_diccionario):
+            caracter = chr(int.from_bytes(f.read(1), byteorder='big'))
+            frecuencia = int.from_bytes(f.read(2), byteorder='big')
+            frecuencias[caracter] = frecuencia
+        
+        i = 0
+        codificacion = ""
+        while i < bytes_necesarios:
+            byte = int.from_bytes(f.read(1), byteorder='big')
+            bits = 8
+            codAux = ""
+    
+            if i == bytes_necesarios - 1:
+                bits = residuo_division
+                byte = byte >> (8 - residuo_division)
+
+            for j in range(bits):
+                if (byte & 1) == 1:
+                    codAux = codAux + "1"
+                else:
+                    codAux = codAux + "0"
+                byte = byte >> 1
+
+            # Invierte la cadena codAux antes de agregarla a codificacion
+            codificacion = codificacion + codAux[::-1]
+            i = i + 1
+
+    arbol_huffman = construir_arbol_huffman(frecuencias)
+    diccionario_codigos = construir_diccionario_codigos(arbol_huffman)
+    # Descomprimir los bits comprimidos utilizando el diccionario de códigos
+    texto_descomprimido = descomprimir(codificacion, diccionario_codigos)
+
+    # Escribir el texto descomprimido en el archivo original
+    with open(args.archivo_original, 'w') as f:
+        f.write(texto_descomprimido)
+    print("Descompresión exitosa")
