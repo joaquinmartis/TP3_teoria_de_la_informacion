@@ -147,7 +147,7 @@ elif args.d:
             bits = 8
             codAux = ""
     
-            if i == bytes_necesarios - 1 & residuo_division>0:
+            if i == bytes_necesarios - 1 and residuo_division>0:
                 bits = residuo_division
                 byte = byte >> (8 - bits)
 
